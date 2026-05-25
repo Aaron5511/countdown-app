@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1a1a2e">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⏱</text></svg>">
+  <title>Weekly Countdown</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 頂部標題 -->
+    <header id="header">
+      <h1 id="headerTitle">Weekly Countdown</h1>
+      <button id="settingsBtn" aria-label="Settings">&#9881;</button>
+    </header>
+
+    <!-- 固定倒數欄 -->
+    <div id="countdownBar">
+      <div id="countdownInfo">
+        <span id="countdownTitle">--</span>
+        <span id="countdownTimeRange"></span>
+      </div>
+      <div id="countdownTimer">--:--</div>
+    </div>
+
+    <!-- 週格表 -->
+    <div id="scheduleContainer">
+      <!-- 用 JS 動態生成格表內容 -->
+    </div>
+
+    <!-- 底部工具列 -->
+    <div id="toolbar">
+      <button id="addBtn">+ 新增</button>
+      <label id="importLabel">
+        匯入 JSON
+        <input type="file" id="importInput" accept=".json" hidden>
+      </label>
+      <button id="exportBtn">匯出</button>
+    </div>
+  </div>
+
+  <!-- 新增/編輯活動 Modal -->
+  <div id="modal" class="modal-overlay" hidden>
+    <div class="modal-content">
+      <h2 id="modalTitle">新增活動</h2>
+      <form id="eventForm">
+        <div class="form-group">
+          <label for="eventName">活動名稱</label>
+          <input type="text" id="eventName" required>
+        </div>
+
+        <!-- 批次編輯開關（編輯時才顯示） -->
+        <div class="form-group" id="batchToggleGroup" hidden>
+          <label>套用到所有同名活動</label>
+          <div class="toggle-row">
+            <button type="button" class="toggle-btn active" data-batch="yes">Yes</button>
+            <button type="button" class="toggle-btn" data-batch="no">No</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>星期</label>
+          <div class="day-picker">
+            <button type="button" class="day-btn" data-day="0">一</button>
+            <button type="button" class="day-btn" data-day="1">二</button>
+            <button type="button" class="day-btn" data-day="2">三</button>
+            <button type="button" class="day-btn" data-day="3">四</button>
+            <button type="button" class="day-btn" data-day="4">五</button>
+            <button type="button" class="day-btn" data-day="5">六</button>
+            <button type="button" class="day-btn" data-day="6">日</button>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="eventStart">開始</label>
+            <input type="time" id="eventStart" required>
+          </div>
+          <div class="form-group">
+            <label for="eventEnd">結束</label>
+            <input type="time" id="eventEnd" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="eventCategory">分類</label>
+          <select id="eventCategory">
+            <option value="work">工作</option>
+            <option value="life">生活</option>
+            <option value="study">讀書</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="eventDesc">備註</label>
+          <input type="text" id="eventDesc">
+        </div>
+        <div class="form-actions">
+          <button type="button" id="deleteEventBtn" class="btn-danger" hidden>刪除</button>
+          <button type="button" id="cancelBtn" class="btn-secondary">取消</button>
+          <button type="submit" class="btn-primary">儲存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 活動詳情 Popup -->
+  <div id="detailPopup" class="detail-popup" hidden>
+    <div id="detailContent"></div>
+  </div>
+
+  <!-- 設定 Modal -->
+  <div id="settingsModal" class="modal-overlay" hidden>
+    <div class="modal-content">
+      <h2>設定</h2>
+      <form id="settingsForm">
+        <div class="form-group">
+          <label for="settingsTitle">標題</label>
+          <input type="text" id="settingsTitle" placeholder="Weekly Countdown">
+        </div>
+
+        <div class="form-group">
+          <label>顯示天數</label>
+          <div class="day-picker">
+            <button type="button" class="settings-day-btn" data-day="0">一</button>
+            <button type="button" class="settings-day-btn" data-day="1">二</button>
+            <button type="button" class="settings-day-btn" data-day="2">三</button>
+            <button type="button" class="settings-day-btn" data-day="3">四</button>
+            <button type="button" class="settings-day-btn" data-day="4">五</button>
+            <button type="button" class="settings-day-btn" data-day="5">六</button>
+            <button type="button" class="settings-day-btn" data-day="6">日</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>週起始日</label>
+          <div class="toggle-row">
+            <button type="button" class="toggle-btn first-day-btn" data-value="monday">週一</button>
+            <button type="button" class="toggle-btn first-day-btn" data-value="sunday">週日</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>顯示範圍（小時）</label>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="settingsViewStart">從</label>
+              <input type="number" id="settingsViewStart" min="0" max="23" placeholder="自動">
+            </div>
+            <div class="form-group">
+              <label for="settingsViewEnd">到</label>
+              <input type="number" id="settingsViewEnd" min="1" max="24" placeholder="自動">
+            </div>
+          </div>
+          <button type="button" id="resetRangeBtn" class="btn-secondary" style="font-size:12px;padding:4px 12px;margin-top:4px;">重設為自動</button>
+        </div>
+
+        <div class="form-group">
+          <label>時間格式</label>
+          <div class="toggle-row">
+            <button type="button" class="toggle-btn clock-btn" data-value="24">24 小時</button>
+            <button type="button" class="toggle-btn clock-btn" data-value="12">12 小時</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>色塊顯示時間</label>
+          <div class="toggle-row">
+            <button type="button" class="toggle-btn show-time-btn" data-value="yes">是</button>
+            <button type="button" class="toggle-btn show-time-btn" data-value="no">否</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="settingsFont">字體</label>
+          <select id="settingsFont">
+            <option value="">系統預設</option>
+            <option value="Arial, Helvetica, sans-serif">Arial</option>
+            <option value="Georgia, 'Times New Roman', serif">Georgia</option>
+            <option value="'Courier New', Courier, monospace">Courier New</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="settingsTextColor">文字顏色</label>
+          <input type="color" id="settingsTextColor" value="#1a1a2e">
+        </div>
+
+        <div class="form-actions">
+          <button type="button" id="settingsCancelBtn" class="btn-secondary">取消</button>
+          <button type="submit" class="btn-primary">儲存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
