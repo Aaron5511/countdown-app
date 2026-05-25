@@ -12,6 +12,8 @@ var TIME_END = 22;            // 結束時間（小時）
 var DAY_NAMES = ['一', '二', '三', '四', '五', '六', '日'];
 var STORAGE_KEY = 'weeklyCountdown_events';
 var SETTINGS_KEY = 'weeklyCountdown_settings';
+var MAX_IMPORT_EVENTS = 1000;   // 匯入筆數上限（防止異常大檔卡住瀏覽器 / 塞爆 localStorage）
+var ALERT_GRACE_MS = 5000;      // 活動結束後多久內才補發嗶聲（超過代表 app 曾背景暫停，不補發）
 
 // --- 設定值 ---
 var settings = {
@@ -246,55 +248,95 @@ function categoryToColor(cat) {
   return '#c9cacc';
 }
 
+// 驗證時間字串：接受 "H:MM" / "HH:MM"（00:00–23:59）。合法回傳正規化的 "HH:MM"，否則回傳 null
+function normalizeTimeStr(timeStr) {
+  if (typeof timeStr !== 'string') return null;
+  var m = timeStr.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return null;
+  return String(parseInt(m[1], 10)).padStart(2, '0') + ':' + m[2];
+}
+
 // 匯入 schedulebuilder 格式的 JSON
+// 回傳結果物件：{ ok, imported, skipped, error }（由呼叫端決定要顯示什麼訊息）
+// 註：刻意不從匯入 JSON 覆蓋 title 等個人設定 — 設定與排程分開儲存（DECISIONS D-010）
 function importScheduleJSON(jsonData) {
-  if (jsonData.title) {
-    settings.title = jsonData.title;
-    saveSettingsToStorage();
+  var evts = (jsonData && jsonData.events) || jsonData;
+
+  // Step 1: 結構驗證 — 必須是陣列、且筆數在合理範圍
+  if (!Array.isArray(evts)) {
+    return { ok: false, imported: 0, skipped: 0, error: '找不到 events 陣列' };
+  }
+  if (evts.length > MAX_IMPORT_EVENTS) {
+    return { ok: false, imported: 0, skipped: 0,
+      error: '活動筆數 ' + evts.length + ' 超過上限 ' + MAX_IMPORT_EVENTS };
   }
 
   var imported = [];
-  var evts = jsonData.events || jsonData;
+  var skipped = 0;
 
-  if (!Array.isArray(evts)) {
-    alert('JSON 格式不正確：找不到 events 陣列');
-    return;
-  }
-
+  // Step 2: 逐筆驗證並轉換
   for (var i = 0; i < evts.length; i++) {
     var e = evts[i];
+    if (!e || typeof e !== 'object') { skipped++; continue; }
+
+    // Step 2a: day 必須是 0–6 的整數
+    var day = e.day;
+    if (typeof day !== 'number' || day % 1 !== 0 || day < 0 || day > 6) {
+      skipped++;
+      continue;
+    }
+
+    // Step 2b: 起訖時間必須符合 HH:MM 格式
+    var rawStart = '';
+    var rawEnd = '';
+    if (e.timeRange && e.timeRange.length === 2) {
+      rawStart = e.timeRange[0];
+      rawEnd = e.timeRange[1];
+    } else if (e.start && e.end) {
+      rawStart = e.start;
+      rawEnd = e.end;
+    }
+    var start = normalizeTimeStr(rawStart);
+    var end = normalizeTimeStr(rawEnd);
+    if (start === null || end === null) {
+      skipped++;
+      continue;
+    }
+
+    // Step 2c: 分類（顏色對映，或明確合法的 category）
     var cat = 'life';
     if (e.colors && e.colors.color) {
       cat = colorToCategory(e.colors.color);
     }
-    if (e.category) {
+    if (e.category === 'work' || e.category === 'life' || e.category === 'study') {
       cat = e.category;
     }
 
-    var start = '';
-    var end = '';
-    if (e.timeRange && e.timeRange.length === 2) {
-      start = e.timeRange[0];
-      end = e.timeRange[1];
-    } else if (e.start && e.end) {
-      start = e.start;
-      end = e.end;
-    }
+    // Step 2d: 標題與備註 — 強制轉成字串，避免物件/陣列混入
+    var title = (typeof e.title === 'string' && e.title.trim()) ? e.title.trim() : '(untitled)';
+    var desc = (typeof e.description === 'string') ? e.description : '';
 
     imported.push({
       id: generateId() + '_' + i,
-      day: typeof e.day === 'number' ? e.day : 0,
+      day: day,
       start: start,
       end: end,
-      title: e.title || '(untitled)',
-      desc: e.description || '',
+      title: title,
+      desc: desc,
       cat: cat
     });
+  }
+
+  // Step 3: 全部不合格 → 整體失敗，不動現有資料
+  if (imported.length === 0) {
+    return { ok: false, imported: 0, skipped: skipped,
+      error: '沒有任何有效活動（檢查 day 是否為 0–6、時間是否為 HH:MM 格式）' };
   }
 
   events = imported;
   saveEvents();
   renderEvents();
+  return { ok: true, imported: imported.length, skipped: skipped, error: '' };
 }
 
 // ============================================================
@@ -659,7 +701,11 @@ function updateCountdowns() {
       if (isCrossMidnight(seg.evt) && !seg.isContinuation) {
         // First segment of cross-midnight: event continues tomorrow, no alert
       } else if (previousActive[seg.evt.id]) {
-        triggerAlert(seg.evt, block);
+        // 只在「剛結束」時提醒：若結束時間已過超過 grace，代表 app 曾被背景暫停、
+        // 錯過了即時歸零那一刻，就不補發嗶聲（符合 README「回前景不補發」的設計）
+        if (nowMs - realEndMs <= ALERT_GRACE_MS) {
+          triggerAlert(seg.evt, block);
+        }
         delete previousActive[seg.evt.id];
       }
     } else {
@@ -798,8 +844,14 @@ function setupEventListeners() {
     reader.onload = function(ev) {
       try {
         var data = JSON.parse(ev.target.result);
-        importScheduleJSON(data);
-        alert('匯入成功：' + events.length + ' 筆活動');
+        var result = importScheduleJSON(data);
+        if (!result.ok) {
+          alert('匯入失敗：' + result.error);
+        } else if (result.skipped > 0) {
+          alert('匯入完成：' + result.imported + ' 筆有效，略過 ' + result.skipped + ' 筆格式錯誤');
+        } else {
+          alert('匯入成功：' + result.imported + ' 筆活動');
+        }
       } catch (err) {
         alert('匯入失敗：' + err.message);
       }

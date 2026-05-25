@@ -136,7 +136,7 @@ GitHub Pages 1-2 分鐘內自動更新。
 
 | 限制 | 原因 | 影響 |
 |------|------|------|
-| 背景不提醒 | iOS Safari PWA 切背景時 timer 暫停 | 回前景重算倒數，不補發嗶聲 |
+| 背景不提醒 | iOS Safari PWA 切背景時 timer 暫停 | 回前景重算倒數；結束於背景期間的活動不補發嗶聲（僅 5 秒 grace 內的真實歸零會響） |
 | localStorage 可能遺失 | Safari 清資料、移除 app 等情況 | 定期用「匯出」備份 |
 | LAN HTTP 無法註冊 SW | Service Worker 需要 HTTPS | 本機測試時無離線功能 |
 | 震動不作用 | iOS Safari 不支援 Vibration API | 靜默 fail，不影響其他功能 |
